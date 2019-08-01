@@ -1,0 +1,20 @@
+Kobject 是 Linux 设备模型的基础，具体可参考 Documentation/kobject.txt
+
+Linux 设备模型的核心是使用 Bus \ Class \ Device \ Driver  四个核心数据结构，将大量的、不同的硬件设备，以树形结构，
+进行归纳、抽象，从而方便 kernel 管理，我们用面向对象的思维来看代，将这四个看成类。抽象即从具体的事物抽出、概括他们
+共同的方面、本质属性与关系等，将这些类中共同的功能属性抽象出来统一实现，来避免冗余代码的产生。于是就出现了  Kobject，
+可以理解成 Java 中的 Object 类，所有类的父类， kobject 只不过是所有总线设备驱动的父类。
+
+
+Kobject主要提供如下功能：
+	1、通过parent指针，可以将所有Kobject以层次结构的形式组合起来。
+	2、使用一个引用计数（reference count），来记录Kobject被引用的次数，并在引用次数变为0时把它释放（这是Kobject诞生时的唯一功能）
+	3、和sysfs虚拟文件系统配合，将每一个Kobject及其特性，以文件的形式，开放到用户空间
+	
+	
+注意：
+1、Linux 中 kobject 几乎不会单独存在，他的主要功能，就是嵌在一个大型的数据结构中，为这个数据结构提供一些底层的功能实现。
+2、Linux driver开发者，很少会直接使用Kobject以及它提供的接口，而是使用构建在Kobject之上的设备模型接口。
+
+
+Kobject 是基本数据类型，每个 kobject 都会在 'sys' 文件系统中以目录的形式出现。

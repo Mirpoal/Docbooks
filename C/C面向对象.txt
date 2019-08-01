@@ -1,0 +1,354 @@
+======================     C语言面向对象编程（一）：封装与继承
+封装在 C++ 中有 protected / privated 关键词在语言层次上支持， C 语言中没有这些，C 语言有结构体可以实现封装和隐藏。
+
+借鉴 QT 隐藏一个类的实现方法，在 QT 中是一个公开头文件、一个私有头文件，私有头文件定义实现的内部细节，公开头文件中
+定义开放给客服程序的接口和公共数据，如下代码结构：
+---------------------------------------------------------------------
+class QObject {
+	public :
+		xx;
+		yy;
+		
+	private:
+		QObjectPrivate* priv;
+};
+---------------------------------------------------------------------
+上面清单中：QObject (qobject.h)，对应有一个 QObjectPrivate (qobject_p.h)
+类似的，我们采用这种方法在 C 语言中用结构体来实现，如下：
+---------------------------------------------------------------------
+struct Object_private;
+struct Object {
+	int a;
+	xx;
+	void (*func)(struct Object* this_);
+	
+	struct Object_private* priv;
+};
+---------------------------------------------------------------------
+上面清单，代码中向前声明 struct Object_private，由于没有定义，还不知道它里面具体有什么数据成员。假如 struct Object 对应
+的头文件是 object.h , 那么 Object_private 的声明放在 object_p.h 。这样做的好处是，除了预定义好的接口，客服程序完全不需要
+知道实现细节，即便实现细节有重构完全重来，客服程序也不需要关注，甚至连相应的模块都不需重新编译----因为 object.h 自始至终都
+没改变，其他引用这个头文件的客服程序不需要重新编译。
+在 C 语言中没有构造函数，需要我们提供，可以在 object.h 中声明一个类似构造函数来生成 struct Object , 比如为
+---------------------------------------------------------------------
+struct Object* new_Object();       // 构造函数声明
+---------------------------------------------------------------------
+提供如上的构造声明后，在 object.c 中对其具体实现，这样客服程序就不需要知道构造细节，另外也许提供一个 析构函数，如下：
+---------------------------------------------------------------------
+void delete_Object(struct Object* obj);
+---------------------------------------------------------------------
+从上面的分析来看， C 语言通过分层的思想，把声明和接口放入头文件中，具体实现细节放入源文件中，用这种方式实现封装和隐藏。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+======================     C语言面向对象编程（二）：继承详解
+C语言通过包含模拟实现继承，比如下面只含数据的简单模拟继承实例：
+---------------------------------------------------------------------
+struct base {														|
+	int a;															|
+};																	|
+																	|
+struct derived_a {													|
+	struct base parent;												|
+	int b;															|
+};																	|
+																	|
+struct derived_b {													|
+	struct base parent;												|
+	int b;															|
+};																	|
+																	|
+---------------------------------------------------------------------   清单2.1
+再看下带有成员函数的继承实例：
+---------------------------------------------------------------------
+struct base {														|
+	int a;															|
+	void (*func1)(struct base* _this);								|
+};																	|
+																	|
+struct derived_a {													|
+	struct base parent;												|
+	int a;															|
+	void (*func2)(struct derived_a* _this);							|
+																	|
+struct derived_b {													|
+	struct base parent;												|
+	int b;															|
+	void (*func3)(struct derived_b* _this);							|
+																	|
+};																	|
+---------------------------------------------------------------------   清单2.2
+为了像C++中一样通过类实例来访问成员函数，必须将结构体内的函数指针成员的第一个参数定位为自身的指针，再调用
+时传入函数指针所属的结构体实例，因为C语言中没有C++那样的 this 指针，如果我们不能显示地通过参数提供，那么
+在成员函数内部就无法访问结构体实例的其他成员。
+
+如下清单是各个实例成员的具体实现：
+---------------------------------------------------------------------
+static void base_func1(struct base* _this)							|
+{																	|
+	printf("this is base::func1\n");								|
+}																	|
+																	|
+static void derived_func2(struct derived* _this)					|
+{																	|
+	printf("this is derived_a::func2\n");							|
+	_this->parent.func1(&_this->parent);  //显示的通过 derived 的							|
+}																	|
+																	|
+static void derived_func3(struct derived* _this)					|
+{																	|
+	printf("this is derived_b::func3\n");							|
+}																	|
+---------------------------------------------------------------------   清单2.3
+
+C++ 的 new 操作符会调用构造函数，对类实例进行初始化。C 语言没有这种特性，只能够使用 malloc 函数来分配内存
+用于初始化，在C 中没有自动初始化结构体成员的特性，只能够自己造构造函数。
+-------------------------------------------------------------------------------------
+struct base* new_base()																|
+{																					|
+	struct base* b = (struct base*)malloc(sizeof(struct base));						|
+	b->a = 0;																		|
+	b->func1 = base_func1;															|
+	return b;																		|
+}																					|
+																					|
+struct base* new_derived_a()														|
+{																					|
+	struct derived_a* da = (struct derived_a*)malloc(sizeof(struct derived_a));		|
+	da->a = 0;																		|
+	da->parent->a = 0;                 // 父类初始化								|
+	da->parent->func1 = base_func1;    // 父类初始化								|
+	da->func2 = derived_func2;														|
+	return b;																		|
+}																					|
+																					|
+struct base* new_derived_b()														|
+{																					|
+	struct derived_b* db = (struct derived_b*)malloc(sizeof(struct derived_b));		|
+	db->b = 0;																		|
+	db->parent->a = 0;                												|
+	db->parent->func1 = base_func1;													|
+	db->func3 = derived_func3;														|
+	return b;																		|
+}																					|
+-------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+======================     C语言面向对象编程（二）：虚函数与多态
+在 C++ 中编译器通过虚函数表，在编译时插入一段隐藏代码，保存类型信息和虚函数地址，而在调用时，这段隐藏的代码
+可以找到实际对象一致的虚函数实现。借鉴 C++ 的这种设计思想，对 C 语言也可以实现。
+
+思路如下：
+	.   在基类中显示声明一个 void** 成员，作为数组保存基类定义的所有函数指针(虚函数表的概念由此而来)，同时定义一个 
+		int 类型的数据成员，指明  void* 数组的长度。
+	.	基类 定义的每个函数指针在数组中的位置、顺序是固定的，这个约定是必须的。
+	.	每个派生类 都必须填充基类的函数指针(可能要动态增长)，没有重写虚函数时，对应位置为 0。
+	.	基类 的函数实现中，遍历函数指针数组(虚函数表)，找到继承层次中的最后一个非 0 的函数指针，就是实际应该调用的和
+		对象相对应的函数实现。
+
+用如下实例来讲解下思想：
+-------------------------------------------------------------
+struct base {
+	void **table;
+	int vt_size;
+	
+	void (*func1)(struct base* b);
+	void (*func2)(struct base* b);
+	void (*delete)(struct base* b);
+};
+
+struct derived {
+	struct base da;     // 继承体现
+	int i;
+};
+
+struct derived_2 {
+	struct derived dda;     // 继承体现
+	int i;
+	char* name;
+};
+
+-------------------------------------------------------------
+derived_a 和 derived_b 都继承至 base 类，如果派生类想要重写虚函数，不需要在派生类中显示声明，只需要在实现源文件
+中实现你要重写的虚函数，在构造函数中把重写的虚函数装入虚函数表中。虚函数表的的初始化 在C++ 中编译器会自动调用继
+承链上所有父类构造，也可以显示在派生类构造函数的初始化列表中调用基类的构造。C 语言没有这种机制，我们可以像 C++ STL
+Allocator 类样，将分配和初始化分离。每个派生类在实现时，都提供两个函数，一个构造一个初始化函数，只需要调用直接累基类
+的初始化函数即可，每个派生类都保证这点。
+
+-------------------------------------------------------------
+// base.h  提供的接口声明
+initialize_base(struct base* b);
+
+
+//  derived.h    的声明
+struct derived* new_derived();
+void initialize_derived();
+
+-------------------------------------------------------------
+// 基类定义的默认初始化
+initialize_base(struct base* b)
+{
+	b->func1 = NULL;
+	b->func2 = NUll;
+	b->ftable = null;
+	b->fvt_size = 0;
+}
+
+// 每个派生类的具体实现
+
+void _derived_func1(struct base* b)
+{
+	printf("%s", __func__);
+	xxxxx;
+}
+
+void _derived_func2(struct base* b)
+{
+	printf("%s", __func__);
+	yyyyy;
+}
+
+void initialize_derived(struct derived* d) 
+{
+	struct base* b = (struct base*) d;
+	b->func1 = _derived_func1;
+	b->func2 = _derived_func2;
+	b->ftable = null;
+	b->fvt_size = 1;
+	initialize_base
+	
+}
+
+struct derived* new_derived()
+{
+	truct derived = malloc(sizeof(struct derived));
+}
+
+
+-------------------------------------------------------------
+
+ 必须限制的是：基类必须实现所有的虚函数，只有这样，这套实现机制才可以运转下去。因为一切的发生是
+ 从基类的实现函数进入，通过遍历虚函数表来找到派生类的实现函数的。
+ 当我们通过 base 类型的指针（实际指向 derived_2 的实例）来访问 func_1 时，基类实现的 func_1 会找
+ 到 VTABLE 中的 derived_2_func_1 进行调用。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+======================     C语言面向对象编程（四）：面向接口编程
+
+下面以如下实例来讲解： c_interface.h
+-------------------------------------------------------------------
+#ifndef __C_INTERFACE_H__										  |
+#define __C_INTERFACE_H__		 								  |
+																  |
+struct base_interface {											  |
+	void (*func1)(struct base_interface* bi);					  |
+	void (*func2)(struct base_interface* bi);					  |
+	void (*func3)(struct base_interface* bi, char* arg);		  |
+};																  |
+																  |
+struct derived {												  |
+	struct base_interface bi;									  |
+	int x;														  |
+	char ch;													  |
+	char* name;													  |
+};																  |
+-------------------------------------------------------------------
+
+分析：
+	derived 结构体通过包含 base_interface 类型成员 bi 来达到继承效果，而 base_interface 在我们没有提供相应的构造函数(C中就是初始化
+的概念)前提下无法实例化，没有提供与 func1 \ func2 \ func3 函数指针对应的实现，即使 malloc 一块 base_interface 内存块，也无法使用。
+derived 类可以提供一个构造函数假如是 new_derived，同时又实现 func1 \ func2 \ func3 的实现并赋值给 bi 的成员，从而完成 derived 类的
+装饰，实现了 base_interface 定义的使用契约。
+
+---------------------------------------------------------------------
+static void _derived_func1(struct base_interface* b)				|
+{																	|
+	struct derived* d = (struct derived*)bi;						|
+	/*																|
+		其他具体实现												|
+	*/																|
+}																	|
+static void _derived_func2(struct base_interface* b)				|
+{																	|
+	struct derived* d = (struct derived*)bi;						|
+	/*																|
+		其他具体实现												|
+	*/																|
+}																	|
+static void _derived_func3(struct base_interface* b)				|
+{																	|
+	struct derived* d = (struct derived*)bi;						|
+	/*																|
+		其他具体实现												|
+	*/																|
+}																	|
+																	|
+struct derived* new_derived()										|
+{																	|
+	struct derived* d = (derived*)malloc(sizeof(derived));			|
+	// 实现接口契约													|
+	d->bi.func1 = _derived_func1;									|
+	d->bi.func2 = _derived_func2;									|
+	d->bi.func3 = _derived_func3;									|
+	d->x = 0;														|
+	d->name = "derivedBase";										|
+	d->ch = 'A';													|
+																	|
+	return d;														|
+}																	|
+---------------------------------------------------------------------
+
+如何面向接口编程：
+	以下面实例简单讲解一下：
+---------------------------------------------------------------------
+void do_something(struct base_interface* bi)						|
+{																	|
+	bi->func1(bi);													|
+}																	|
+																	|
+int main()															|
+{																	|
+	struct derived* d = new_derived();								|
+	do_something((struct base_interface*)d);						|
+	return 0;														|
+}																	|
+---------------------------------------------------------------------
+do_something 函数是面向对象语言中常见的面向接口编程方法，把接口作为参数传递，实例中 bi 可以指向任意一个实现了 base_interface 接口
+的类的实例，达到了多态效果，这样提高了程序的扩展性，降低耦合。
