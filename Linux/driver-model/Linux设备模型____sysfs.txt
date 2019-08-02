@@ -1,0 +1,85 @@
+Linux设备模型 ---------- sysfs
+
+sysfs 是一个基于 RAM 的文件系统，和 Kobject 一起，可以支持  Kernel 的数据结构导出到用户空间，以文件目录
+结构的形式，提供对这些数据结构以及数据结构的属性的访问支持。
+
+有关文件系统的具体实现细节，这里不讲解，我们以设备模型出发，讲述 sysfs 在设备模型中的作用和使用方法，具体如下：
+	. sysfs 和  kobject 的关系
+	. attribute 的概念
+	. sysfs 文件系统的操作接口
+	
+	
+-------------------------------------------------------------------------------------------------------------清单1
+sysfs 和 kobject 的关系：
+kboject 添加到内核中会调用 sysfs 文件系统的创建目录接口，如下：
+
+static int create_dir(struct kobject *kobj)
+{
+	int error = 0;
+	error = sysfs_create_dir(kobj);
+	if (!error) {
+		error = populate_dir(kobj);
+		if (error)
+			sysfs_remove_dir(kobj);
+	}
+	return error;
+}
+
+static int kobject_add_internal(struct kobject *kobj)
+{
+	...
+	error = create_dir(kobj);
+	...
+}
+	
+-------------------------------------------------------------------------------------------------------------清单2
+attribute：
+attribute 在 sysfs 文件系统中是以文件的形式提供的，它可以是任何东西，名称、一个内部变量、一个字符串等等。而 attribute 在
+sysfs 文件系统中以文件形式提供，即 kobject 的所有属性，都是在它对应的 sysfs 目录下文件呈现，一般是可读可写的。而 kernel 中
+定义了这些属性的模块，会根据用户的读写操作，记录和返回 attribute 的值。
+attribute 也是内核和用户空间进行信息交互的一种方式。
+
+Linux内核中，attribute分为普通的attribute和二进制attribute，如下：
+struct attribute {
+    const char *name;
+    umode_t         mode;
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+    bool ignore_lockdep:1;
+    struct lock_class_key   *key;
+    struct lock_class_key   skey;
+#endif
+};
+ 
+struct bin_attribute {
+    struct attribute    attr;
+    size_t          size;
+    void *private;
+    ssize_t (*read)(struct file *, struct kobject *, struct bin_attribute *,
+                    char *, loff_t, size_t);
+    ssize_t (*write)(struct file *,struct kobject *, struct bin_attribute *,
+                    char *, loff_t, size_t);
+    int (*mmap)(struct file *, struct kobject *, struct bin_attribute *attr,
+                    struct vm_area_struct *vma);
+};
+struct attribute为普通的attribute，使用该attribute生成的sysfs文件，只能用字符串的形式读写。而struct bin_attribute在
+struct attribute的基础上，增加了read、write等函数，因此它所生成的sysfs文件可以用任何方式读写。
+
+-------------------------------------------------------------------------------------------------------------清单3
+attribute 文件的创建：
+在linux内核中，attibute文件的创建是由fs/sysfs/file.c中sysfs_create_file接口完成的
+
+-------------------------------------------------------------------------------------------------------------清单4
+attribute 文件的 read 和 write:
+从清单3 中 attribute 类的定义来看，其中没有文件操作接口定义，所有的文件系统都会定义一个struct file_operations变量，
+用于描述本文件系统的操作接口，sysfs也不例外，如下就是 kernel 中对 sysfs 的操作接口的实现：
+const struct file_operations sysfs_file_operations = {
+	.read		= sysfs_read_file,
+	.write		= sysfs_write_file,
+	.llseek		= generic_file_llseek,
+	.open		= sysfs_open_file,
+	.release	= sysfs_release,
+	.poll		= sysfs_poll,
+};
+
+
+
